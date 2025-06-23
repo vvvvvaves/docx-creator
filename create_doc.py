@@ -1,0 +1,328 @@
+from clause_model import Clause
+
+def set_header_and_footer(doc, header_text, footer_text):
+    from docx.shared import Pt
+    header = doc.sections[0].header
+    footer = doc.sections[0].footer
+    
+    # Set header text and font size
+    header_para = header.paragraphs[0]
+    header_para.text = header_text
+    header_para.runs[0].font.size = Pt(8)
+
+    # Get the existing table in the footer
+    table = footer.tables[0]
+    left_cell = table.cell(0, 0)
+    left_para = left_cell.paragraphs[0]
+    left_para.text = footer_text
+    for run in left_para.runs:
+        run.font.size = Pt(8)
+
+    right_para = table.cell(0, 1).paragraphs[0]
+    for run in right_para.runs:
+        run.font.size = Pt(8)
+
+    return doc  
+
+def add_heading(doc, heading_text):
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+    from docx.enum.text import WD_LINE_SPACING
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    # Create and configure custom heading style
+    custom_style = doc.styles['Title']
+    custom_style.font.size = Pt(24)
+    custom_style.font.name = 'Arial'
+    custom_style.font.color.rgb = RGBColor(0, 166, 80)
+    custom_style.paragraph_format.space_after = Pt(0)
+    custom_style.paragraph_format.space_before = Pt(0)
+
+    # Remove border by setting it to none using the proper XML structure
+    pPr = custom_style._element.get_or_add_pPr()
+    pBdr = OxmlElement('w:pBdr')
+    for border in ['top', 'left', 'bottom', 'right', 'between', 'bar']:
+        border_elem = OxmlElement(f'w:{border}')
+        border_elem.set(qn('w:val'), 'none')
+        border_elem.set(qn('w:sz'), '0')
+        border_elem.set(qn('w:space'), '0')
+        border_elem.set(qn('w:color'), 'auto')
+        pBdr.append(border_elem)
+    pPr.append(pBdr)
+
+    # Remove empty paragraphs at the start of the document
+    if doc.paragraphs and not doc.paragraphs[0].text.strip():
+        p = doc.paragraphs[0]._element
+        p.getparent().remove(p)
+        p._p = p._element = None
+
+    # Add heading using the custom style
+    paragraph = doc.add_paragraph(style='Title')
+    run = paragraph.add_run(heading_text)
+    # Ensure the run also has Arial font
+    run.font.name = 'Arial'
+
+    return doc
+
+def define_styles(doc):
+    from docx import Document
+    from docx.shared import Pt, RGBColor, Cm
+    from docx.enum.text import WD_LINE_SPACING, WD_TAB_ALIGNMENT
+    from docx.enum.style import WD_STYLE_TYPE
+    from docx.shared import Twips
+
+    # Create paragraph style for the list
+    custom_style = doc.styles['Heading 1']
+    custom_style.font.size = Pt(14)
+    custom_style.font.color.rgb = RGBColor(0, 176, 80)
+    custom_style.font.name = 'Arial'
+    custom_style.paragraph_format.space_after = Pt(0)
+    custom_style.paragraph_format.space_before = Pt(0)
+    custom_style.paragraph_format.left_indent = Cm(0)
+    custom_style.paragraph_format.right_indent = Cm(0)
+    custom_style.paragraph_format.first_line_indent = Cm(0)
+
+
+    # style = doc.styles.add_style('Clause 1', WD_STYLE_TYPE.PARAGRAPH)
+    # style.font.name = 'Arial'
+    # style.font.size = Pt(14)
+    # style.font.color.rgb = RGBColor(0, 176, 80)  # Standard green
+
+    style = doc.styles.add_style('Clause 2', WD_STYLE_TYPE.PARAGRAPH)
+    style.font.name = 'Arial'
+    style.font.size = Pt(10)
+    indent_coef = 1.26
+    style.paragraph_format.first_line_indent = Cm(-indent_coef*1)
+    style.paragraph_format.left_indent = Cm(indent_coef*2)  # Set left indent to 0.63 cm
+
+    style = doc.styles.add_style('Clause 3', WD_STYLE_TYPE.PARAGRAPH)
+    style.font.name = 'Arial'
+    style.font.size = Pt(10)
+    style.paragraph_format.first_line_indent = Cm(indent_coef*(-0.5))
+    style.paragraph_format.left_indent = Cm(indent_coef*2.5)
+
+    return doc
+
+def add_clauses(doc, clauses: list[dict]):
+    from docx.enum.text import WD_LINE_SPACING
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    
+    clauses = [Clause.model_validate(clause) for clause in clauses]
+
+    # Enable line numbering using XML elements
+    section = doc.sections[-1]._sectPr
+    line_num = OxmlElement('w:lnNumType')
+    line_num.set(qn('w:start'), '0')  # Start at 1
+    line_num.set(qn('w:countBy'), '1')  # Number every line
+    line_num.set(qn('w:distance'), '360')  # ~0.5 inch from text
+    line_num.set(qn('w:restart'), 'continuous')  # Continuous numbering
+    section.append(line_num)
+
+    for i, clause in enumerate(clauses):
+        # Add the list item with custom numbering
+        paragraph = doc.add_paragraph(style='Heading 1')
+        run = paragraph.add_run(f"{i+1}\t")  # Add number
+        run = paragraph.add_run(f"{clause.clause_title}")  # Add tab and text
+
+        for j, content in enumerate(clause.clause_content):
+            paragraph = doc.add_paragraph(style='Clause 2')
+            run = paragraph.add_run(f"{i+1}.{j+1}\t")  # Add number
+            run = paragraph.add_run(f"{content.clause_content}")  # Add tab and text
+
+            for k, subclause in enumerate(content.subclauses):
+                paragraph = doc.add_paragraph(style='Clause 3')
+                letter = chr(ord('a') + k)
+                run = paragraph.add_run(f"{letter})\t")  # Add letter and tab
+                run = paragraph.add_run(f"{subclause}")  # Add tab and text
+
+    return doc
+
+def set_updatefields_true(doc):
+    import lxml
+    namespace = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    # add child to doc.settings element
+    element_updatefields = lxml.etree.SubElement(
+        doc.settings.element, f"{namespace}updateFields"
+    )
+    element_updatefields.set(f"{namespace}val", "true")
+    return doc
+
+def add_table_of_contents(doc):
+    from docx.shared import Pt, Inches
+    from docx.oxml import OxmlElement, register_element_cls
+    from docx.oxml.ns import qn
+    from docx.oxml.xmlchemy import BaseOxmlElement
+    from docx.enum.section import WD_SECTION
+    
+    # Register the TOC element
+    class CT_SdtToc(BaseOxmlElement):
+        """Table of contents element class."""
+        sdtContent = None
+    register_element_cls('w:sdt', CT_SdtToc)
+    
+    # Create a new section for TOC
+    new_section = doc.add_section()
+    
+    # Set section type to continuous and add two columns
+    type_element = OxmlElement('w:type')
+    type_element.set(qn('w:val'), 'continuous')
+    new_section._sectPr.append(type_element)
+    
+    # Add columns configuration
+    cols = OxmlElement('w:cols')
+    cols.set(qn('w:num'), '2')
+    cols.set(qn('w:space'), '708')  # 0.5 inch in twentieths of a point
+    new_section._sectPr.append(cols)
+    
+    # Add spacing before TOC
+    doc.add_paragraph()
+    
+    # Create the TOC
+    paragraph = doc.add_paragraph()
+    
+    # Create structured document tag
+    sdt = OxmlElement('w:sdt')
+    
+    # Create SDT properties
+    sdtPr = OxmlElement('w:sdtPr')
+    
+    # Create SDT ID
+    sdtId = OxmlElement('w:id')
+    sdtId.set(qn('w:val'), '-1202456363')
+    sdtPr.append(sdtId)
+    
+    # Create SDT title
+    sdtTitle = OxmlElement('w:docPartObj')
+    docPartGallery = OxmlElement('w:docPartGallery')
+    docPartGallery.set(qn('w:val'), 'Table of Contents')
+    sdtTitle.append(docPartGallery)
+    sdtPr.append(sdtTitle)
+    
+    sdt.append(sdtPr)
+    
+    # Create SDT content
+    sdtContent = OxmlElement('w:sdtContent')
+    
+    # Create TOC paragraph
+    p = OxmlElement('w:p')
+    
+    # Create TOC run
+    r = OxmlElement('w:r')
+    
+    # Create TOC field begin
+    fldChar1 = OxmlElement('w:fldChar')
+    fldChar1.set(qn('w:fldCharType'), 'begin')
+    r.append(fldChar1)
+    
+    # Create TOC instruction text
+    instrText = OxmlElement('w:instrText')
+    instrText.set(qn('xml:space'), 'preserve')
+    # Add \t switch to use built-in TOC heading
+    instrText.text = 'TOC \\o "1-3" \\h \\z \\u \\t "TOC Heading,1"'
+    r.append(instrText)
+    
+    # Create TOC field end
+    fldChar2 = OxmlElement('w:fldChar')
+    fldChar2.set(qn('w:fldCharType'), 'end')
+    r.append(fldChar2)
+    
+    p.append(r)
+    sdtContent.append(p)
+    sdt.append(sdtContent)
+    
+    # Add the TOC to the document
+    paragraph._p.append(sdt)
+    
+    # Add spacing after TOC
+    doc.add_paragraph()
+    
+    # Create another section for the main content with a page break
+    final_section = doc.add_section(WD_SECTION.NEW_PAGE)  # This creates a new page
+    
+    # Reset to single column for the main content
+    cols = OxmlElement('w:cols')
+    cols.set(qn('w:num'), '1')
+    final_section._sectPr.append(cols)
+    
+    return doc
+
+def create_docx_file(input_file_name, output_file_name, clauses: list[dict]):
+    from docx import Document
+    doc = Document(input_file_name)
+    doc = define_styles(doc)
+    doc = set_header_and_footer(doc, "Header of my document", "Footer of my document")
+    doc = add_heading(doc, "Clause Index")
+    doc = add_table_of_contents(doc)  # Add TOC after heading
+    doc = add_heading(doc, "Part 2")
+    doc = add_clauses(doc, clauses)
+    doc = set_updatefields_true(doc)
+    doc.save(output_file_name)
+
+
+if __name__ == "__main__":
+    clauses = [
+        {
+            "clause_number": "1",
+            "clause_title": "Lorem Ipsum Dolor",
+            "clause_content": [
+                {
+                    "clause_content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+                    "subclauses": ["Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.", "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."]
+                }
+            ]
+        },
+        {
+            "clause_number": "2",
+            "clause_title": "Lorem ipsum Dolor",
+            "clause_content": [
+                {
+                    "clause_content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+                    "subclauses": ["Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.", "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."]
+                }
+            ]
+        }, 
+        {
+            "clause_number": "3",
+            "clause_title": "Lorem ipsum Dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua",
+            "clause_content": [
+                {
+                    "clause_content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+                    "subclauses": ["Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.", "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."]
+                }
+            ]
+        },
+        
+        {
+            "clause_number": "4",
+            "clause_title": "Lorem ipsum Dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua",
+            "clause_content": [
+                {
+                    "clause_content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+                    "subclauses": ["Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.", "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."]
+                }
+            ]
+        },
+        {
+            "clause_number": "5",
+            "clause_title": "Lorem ipsum Dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua",
+            "clause_content": [
+                {
+                    "clause_content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+                    "subclauses": ["Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.", "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."]
+                }
+            ]
+        },
+        {
+            "clause_number": "6",
+            "clause_title": "Lorem ipsum Dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua",
+            "clause_content": [
+                {
+                    "clause_content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+                    "subclauses": ["Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.", "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."]
+                }
+            ]
+        }
+    ]
+    create_docx_file("header_and_footer_empty.docx", "part_ii.docx", clauses)
