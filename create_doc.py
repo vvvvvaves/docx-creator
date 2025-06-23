@@ -155,12 +155,24 @@ def add_table_of_contents(doc):
     from docx.oxml.ns import qn
     from docx.oxml.xmlchemy import BaseOxmlElement
     from docx.enum.section import WD_SECTION
+    from docx.enum.style import WD_STYLE_TYPE
     
     # Register the TOC element
     class CT_SdtToc(BaseOxmlElement):
         """Table of contents element class."""
         sdtContent = None
     register_element_cls('w:sdt', CT_SdtToc)
+    
+    # Create custom TOC styles
+    try:
+        toc1_style = doc.styles.add_style('toc 1', WD_STYLE_TYPE.PARAGRAPH)
+        toc1_style.font.name = 'Arial'
+        toc1_style.font.size = Pt(10)
+    except:
+        # Style might already exist
+        toc1_style = doc.styles['toc 1']
+        toc1_style.font.name = 'Arial'
+        toc1_style.font.size = Pt(10)
     
     # Create a new section for TOC
     new_section = doc.add_section()
@@ -181,6 +193,9 @@ def add_table_of_contents(doc):
     
     # Create the TOC
     paragraph = doc.add_paragraph()
+    # Set paragraph font to Arial and 10pt
+    paragraph.style.font.name = 'Arial'
+    paragraph.style.font.size = Pt(10)
     
     # Create structured document tag
     sdt = OxmlElement('w:sdt')
@@ -207,6 +222,31 @@ def add_table_of_contents(doc):
     
     # Create TOC paragraph
     p = OxmlElement('w:p')
+    
+    # Add paragraph properties for font formatting
+    pPr = OxmlElement('w:pPr')
+    
+    # Create paragraph run properties
+    rPr = OxmlElement('w:rPr')
+    
+    # Set font name to Arial
+    rFonts = OxmlElement('w:rFonts')
+    rFonts.set(qn('w:ascii'), 'Arial')
+    rFonts.set(qn('w:hAnsi'), 'Arial')
+    rPr.append(rFonts)
+    
+    # Set font size to 10pt (20 half-points)
+    sz = OxmlElement('w:sz')
+    sz.set(qn('w:val'), '20')
+    rPr.append(sz)
+    
+    # Set font size for complex scripts
+    szCs = OxmlElement('w:szCs')
+    szCs.set(qn('w:val'), '20')
+    rPr.append(szCs)
+    
+    pPr.append(rPr)
+    p.append(pPr)
     
     # Create TOC run
     r = OxmlElement('w:r')
