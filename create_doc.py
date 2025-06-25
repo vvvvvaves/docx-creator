@@ -36,7 +36,7 @@ def add_heading(doc, heading_text):
     custom_style.font.size = Pt(24)
     custom_style.font.name = 'Arial'
     custom_style.font.color.rgb = RGBColor(0, 166, 80)
-    custom_style.paragraph_format.space_after = Pt(0)
+    custom_style.paragraph_format.space_after = Pt(7.5)  # 10px bottom padding
     custom_style.paragraph_format.space_before = Pt(0)
 
     # Remove border by setting it to none using the proper XML structure
@@ -188,9 +188,6 @@ def add_table_of_contents(doc):
     cols.set(qn('w:space'), '708')  # 0.5 inch in twentieths of a point
     new_section._sectPr.append(cols)
     
-    # Add spacing before TOC
-    doc.add_paragraph()
-    
     # Create the TOC
     paragraph = doc.add_paragraph()
     # Set paragraph font to Arial and 10pt
@@ -275,9 +272,6 @@ def add_table_of_contents(doc):
     # Add the TOC to the document
     paragraph._p.append(sdt)
     
-    # Add spacing after TOC
-    doc.add_paragraph()
-    
     # Create another section for the main content with a page break
     final_section = doc.add_section(WD_SECTION.NEW_PAGE)  # This creates a new page
     
@@ -299,44 +293,84 @@ def add_part_i(doc, rows: list[dict]):
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.enum.table import WD_ALIGN_VERTICAL
     
-    # Create a table with 3 columns and as many rows as needed
-    table = doc.add_table(rows=len(rows), cols=3)
+    # Create individual tables for each row
+    from docx.shared import Pt
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
     
-    # Set table style (optional)
-    table.style = 'Table Grid'
-    
-    # Populate the table with data
     for i, row_data in enumerate(rows):
-        row = table.rows[i]
+        # Determine which columns to include based on non-empty data
+        query = row_data.get('query', '').strip()
+        answer = row_data.get('answer', '').strip()
+        answer_type = row_data.get('answer_type', '').strip()
         
-        # Set dynamic cell padding (20px top and bottom)
-        from docx.shared import Pt
-        from docx.oxml import OxmlElement
-        from docx.oxml.ns import qn
+        # Build list of columns to include
+        columns_data = []
+        column_alignments = []
         
-        # Fill in the three columns: query, answer, answer_type
-        query_cell = row.cells[0]
-        answer_cell = row.cells[1]
-        answer_type_cell = row.cells[2]
+        is_query = False
+        if query:
+            columns_data.append(query)
+            column_alignments.append(WD_ALIGN_PARAGRAPH.LEFT)
+            is_query = True
+
+        if answer:
+            columns_data.append(answer)
+            column_alignments.append(WD_ALIGN_PARAGRAPH.CENTER)
         
-        # Set cell text
-        query_cell.text = row_data.get('query', '')
-        answer_cell.text = row_data.get('answer', '')
-        answer_type_cell.text = row_data.get('answer_type', '')
+        if answer_type:
+            columns_data.append(answer_type)
+            column_alignments.append(WD_ALIGN_PARAGRAPH.RIGHT)
         
-        # Set cell margins (20px top and bottom padding)
+        # Skip if no data to display
+        if not columns_data:
+            continue
+            
+        # Create table with dynamic number of columns
+        table = doc.add_table(rows=1, cols=len(columns_data))
+        table.style = 'Table Grid'
+        
+        # Customize table borders
+        tbl = table._tbl
+        tblPr = tbl.tblPr
+        tblBorders = OxmlElement('w:tblBorders')
+        
+        
+        for border_name in ['bottom', 'insideH']:
+            border = OxmlElement(f'w:{border_name}')
+            border.set(qn('w:val'), 'single')
+            border.set(qn('w:sz'), '8')  # 1px = 8 eighths of a point
+            border.set(qn('w:space'), '0')
+            border.set(qn('w:color'), 'b8b9bb')  # rgb(184, 185, 187) in hex
+            tblBorders.append(border)
+        
+        # Remove vertical borders (left, right, insideV)
+        for border_name in ['left', 'right', 'insideV', 'top']:
+            border = OxmlElement(f'w:{border_name}')
+            border.set(qn('w:val'), 'none')
+            border.set(qn('w:sz'), '0')
+            border.set(qn('w:space'), '0')
+            border.set(qn('w:color'), 'auto')
+            tblBorders.append(border)
+        
+        
+        tblPr.append(tblBorders)
+        
+        row = table.rows[0]
+        
+        # Set cell margins (10px top and bottom padding)
         for cell in row.cells:
             tc = cell._tc
             tcPr = tc.get_or_add_tcPr()
             tcMar = OxmlElement('w:tcMar')
             
-            # Set top margin (20px = 15 points)
+            # Set top margin
             top = OxmlElement('w:top')
             top.set(qn('w:w'), '150')  # 10px in twentieths of a point
             top.set(qn('w:type'), 'dxa')
             tcMar.append(top)
             
-            # Set bottom margin (20px = 15 points)
+            # Set bottom margin
             bottom = OxmlElement('w:bottom')
             bottom.set(qn('w:w'), '150')  # 10px in twentieths of a point
             bottom.set(qn('w:type'), 'dxa')
@@ -344,27 +378,22 @@ def add_part_i(doc, rows: list[dict]):
             
             tcPr.append(tcMar)
         
+        # Fill cells with data and apply formatting
+        for j, (data, alignment) in enumerate(zip(columns_data, column_alignments)):
+            cell = row.cells[j]
+            cell.text = data
+            cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            
+            for paragraph in cell.paragraphs:
+                paragraph.alignment = alignment
+                for run in paragraph.runs:
+                    run.font.name = 'Arial'
+                    run.font.size = Pt(10)
+                    if is_query and j == 0: 
+                        run.font.bold = True
         
-        query_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        for paragraph in query_cell.paragraphs:
-            paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            for run in paragraph.runs:
-                run.font.name = 'Arial'
-                run.font.size = Pt(10)
-        
-        answer_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        for paragraph in answer_cell.paragraphs:
-            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            for run in paragraph.runs:
-                run.font.name = 'Arial'
-                run.font.size = Pt(10)
-        
-        answer_type_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-        for paragraph in answer_type_cell.paragraphs:
-            paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            for run in paragraph.runs:
-                run.font.name = 'Arial'
-                run.font.size = Pt(10)
+        # Add some spacing between tables
+        # doc.add_paragraph()
 
     doc.add_section(WD_SECTION.NEW_PAGE)
     
@@ -448,7 +477,7 @@ if __name__ == "__main__":
                 }
             ]
         }
-    ]
+    ]*7
 
     preamble_rows = [
         {
@@ -491,5 +520,5 @@ if __name__ == "__main__":
             "answer": "That the service as described below shall be performed subject to the terms and conditions of this Charter, which consists of Part 1 and Part 2 and the completed questionnaire on the latest version of Intertanko Standard Tanker Voyage Chartering Questionnaire 1988 (“the Q88”) attached to this Charter. ",
             "answer_type": ""
         },
-    ]
+    ]*5
     create_docx_file("header_and_footer_empty.docx", "part_ii.docx", clauses, preamble_rows)
