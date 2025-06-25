@@ -288,13 +288,97 @@ def add_table_of_contents(doc):
     
     return doc
 
-def create_docx_file(input_file_name, output_file_name, clauses: list[dict]):
+def add_part_i(doc, rows: list[dict]):
+    """
+    rows: list[dict]
+    keys: query, answer, answer_type
+    """
+    from docx import Document
+    from docx.shared import Pt
+    from docx.enum.section import WD_SECTION
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_ALIGN_VERTICAL
+    
+    # Create a table with 3 columns and as many rows as needed
+    table = doc.add_table(rows=len(rows), cols=3)
+    
+    # Set table style (optional)
+    table.style = 'Table Grid'
+    
+    # Populate the table with data
+    for i, row_data in enumerate(rows):
+        row = table.rows[i]
+        
+        # Set dynamic cell padding (20px top and bottom)
+        from docx.shared import Pt
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+        
+        # Fill in the three columns: query, answer, answer_type
+        query_cell = row.cells[0]
+        answer_cell = row.cells[1]
+        answer_type_cell = row.cells[2]
+        
+        # Set cell text
+        query_cell.text = row_data.get('query', '')
+        answer_cell.text = row_data.get('answer', '')
+        answer_type_cell.text = row_data.get('answer_type', '')
+        
+        # Set cell margins (20px top and bottom padding)
+        for cell in row.cells:
+            tc = cell._tc
+            tcPr = tc.get_or_add_tcPr()
+            tcMar = OxmlElement('w:tcMar')
+            
+            # Set top margin (20px = 15 points)
+            top = OxmlElement('w:top')
+            top.set(qn('w:w'), '150')  # 10px in twentieths of a point
+            top.set(qn('w:type'), 'dxa')
+            tcMar.append(top)
+            
+            # Set bottom margin (20px = 15 points)
+            bottom = OxmlElement('w:bottom')
+            bottom.set(qn('w:w'), '150')  # 10px in twentieths of a point
+            bottom.set(qn('w:type'), 'dxa')
+            tcMar.append(bottom)
+            
+            tcPr.append(tcMar)
+        
+        
+        query_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        for paragraph in query_cell.paragraphs:
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            for run in paragraph.runs:
+                run.font.name = 'Arial'
+                run.font.size = Pt(10)
+        
+        answer_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        for paragraph in answer_cell.paragraphs:
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for run in paragraph.runs:
+                run.font.name = 'Arial'
+                run.font.size = Pt(10)
+        
+        answer_type_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        for paragraph in answer_type_cell.paragraphs:
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            for run in paragraph.runs:
+                run.font.name = 'Arial'
+                run.font.size = Pt(10)
+
+    doc.add_section(WD_SECTION.NEW_PAGE)
+    
+    return doc
+
+def create_docx_file(input_file_name, output_file_name, clauses: list[dict], preamble_rows: list[dict]):
     from docx import Document
     doc = Document(input_file_name)
     doc = define_styles(doc)
     doc = set_header_and_footer(doc, "Header of my document", "Footer of my document")
     doc = add_heading(doc, "Clause Index")
     doc = add_table_of_contents(doc)  # Add TOC after heading
+    doc = add_heading(doc, "Preamble")
+    doc = add_part_i(doc, preamble_rows)
     doc = add_heading(doc, "Part 2")
     doc = add_clauses(doc, clauses)
     doc = set_updatefields_true(doc)
@@ -365,4 +449,47 @@ if __name__ == "__main__":
             ]
         }
     ]
-    create_docx_file("header_and_footer_empty.docx", "part_ii.docx", clauses)
+
+    preamble_rows = [
+        {
+            "query": "Date:",
+            "answer": "2025-06-25",
+            "answer_type": ""
+        },
+        {
+            "query": "It is this day agreed between:",
+            "answer": "John Doe and Jane Doe",
+            "answer_type": ""
+        },
+        {
+            "query": "of (registered address):",
+            "answer": "123 Main St, Anytown, USA",
+            "answer_type": "(“Owners”)"
+        },
+        {
+            "query": "being the: ",
+            "answer": "Owners",
+            "answer_type": "(“Owner/Disponent Owner”)"
+        },
+        {
+            "query": "of the Vessel called:",
+            "answer": "John Doe and Jane Doe",
+            "answer_type": "(“Vessel”)"
+        },
+        {
+            "query": "and",
+            "answer": "John Doe and Jane Doe",
+            "answer_type": "(“Vessel”)"
+        },
+        {
+            "query": "of",
+            "answer": "John Doe and Jane Doe",
+            "answer_type": "(“Charterers”)"
+        },
+        {
+            "query": "",
+            "answer": "That the service as described below shall be performed subject to the terms and conditions of this Charter, which consists of Part 1 and Part 2 and the completed questionnaire on the latest version of Intertanko Standard Tanker Voyage Chartering Questionnaire 1988 (“the Q88”) attached to this Charter. ",
+            "answer_type": ""
+        },
+    ]
+    create_docx_file("header_and_footer_empty.docx", "part_ii.docx", clauses, preamble_rows)
