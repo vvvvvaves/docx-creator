@@ -1,9 +1,14 @@
 from clause_model import Clause
 
+def config():
+    return {
+        "MARKER_TEXT": "Start_new_section"
+    }
+
 def set_header_and_footer(doc, header_text, footer_text):
     from docx.shared import Pt
-    header = doc.sections[0].header
-    footer = doc.sections[0].footer
+    header = doc.sections[1].header
+    footer = doc.sections[1].footer
     
     # Set header text and font size
     header_para = header.paragraphs[0]
@@ -24,15 +29,22 @@ def set_header_and_footer(doc, header_text, footer_text):
 
     return doc  
 
+def find_marker_paragraph(doc):
+    for paragraph in doc.paragraphs:
+        if paragraph.text.strip() == config()["MARKER_TEXT"]:
+            return paragraph
+    return None
+
 def add_heading(doc, heading_text):
     from docx import Document
     from docx.shared import Pt, RGBColor
     from docx.enum.text import WD_LINE_SPACING
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
-
+    from docx.enum.style import WD_STYLE_TYPE
+    
     # Create and configure custom heading style
-    custom_style = doc.styles['Title']
+    custom_style = doc.styles.add_style('Page Title', WD_STYLE_TYPE.PARAGRAPH)
     custom_style.font.size = Pt(24)
     custom_style.font.name = 'Arial'
     custom_style.font.color.rgb = RGBColor(0, 166, 80)
@@ -52,16 +64,14 @@ def add_heading(doc, heading_text):
     pPr.append(pBdr)
 
     # Remove empty paragraphs at the start of the document
-    if doc.paragraphs and not doc.paragraphs[0].text.strip():
-        p = doc.paragraphs[0]._element
-        p.getparent().remove(p)
-        p._p = p._element = None
+    # if doc.paragraphs and not doc.paragraphs[0].text.strip():
+    #     p = doc.paragraphs[0]._element
+    #     p.getparent().remove(p)
+    #     p._p = p._element = None
 
     # Add heading using the custom style
-    paragraph = doc.add_paragraph(style='Title')
-    run = paragraph.add_run(heading_text)
-    # Ensure the run also has Arial font
-    run.font.name = 'Arial'
+    marker_paragraph = find_marker_paragraph(doc)
+    paragraph = marker_paragraph.insert_paragraph_before(heading_text, style='Page Title')
 
     return doc
 
@@ -73,7 +83,10 @@ def define_styles(doc):
     from docx.shared import Twips
 
     # Create paragraph style for the list
-    custom_style = doc.styles['Heading 1']
+    if 'Heading 1' not in doc.styles:
+        custom_style = doc.styles.add_style('Heading 1', WD_STYLE_TYPE.PARAGRAPH)
+    else:
+        custom_style = doc.styles['Heading 1']
     custom_style.font.size = Pt(14)
     custom_style.font.color.rgb = RGBColor(0, 176, 80)
     custom_style.font.name = 'Arial'
@@ -112,7 +125,7 @@ def add_clauses(doc, clauses: list[dict]):
     clauses = [Clause.model_validate(clause) for clause in clauses]
 
     # Enable line numbering using XML elements
-    section = doc.sections[-1]._sectPr
+    section = doc.sections[-2]._sectPr
     line_num = OxmlElement('w:lnNumType')
     line_num.set(qn('w:start'), '0')  # Start at 1
     line_num.set(qn('w:countBy'), '1')  # Number every line
@@ -328,7 +341,7 @@ def add_part_i(doc, rows: list[dict]):
             
         # Create table with dynamic number of columns
         table = doc.add_table(rows=1, cols=len(columns_data))
-        table.style = 'Table Grid'
+        # table.style = 'Table Grid'
         
         # Customize table borders
         tbl = table._tbl
@@ -399,19 +412,55 @@ def add_part_i(doc, rows: list[dict]):
     
     return doc
 
+def add_title_page(doc, title, subtitle, date, additional_information):
+    from docx.enum.section import WD_SECTION
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+    title_page = doc
+
+    title_paragraph = title_page.paragraphs[3]
+    subtitle_paragraph = title_page.paragraphs[4]
+    date_paragraph = title_page.paragraphs[6]
+    additional_information_paragraph = title_page.paragraphs[19]
+
+    # Clear existing runs and add new ones with proper formatting
+    title_paragraph.clear()
+    run = title_paragraph.add_run(title)
+    run.font.color.rgb = RGBColor(255, 255, 255)
+
+    subtitle_paragraph.clear()
+    run = subtitle_paragraph.add_run(subtitle)
+    run.font.color.rgb = RGBColor(255, 255, 255)
+
+    date_paragraph.clear()
+    run = date_paragraph.add_run(date)
+    run.font.color.rgb = RGBColor(255, 255, 255)
+
+    additional_information_paragraph.clear()
+    run = additional_information_paragraph.add_run(additional_information)
+    run.font.size = Pt(8)
+    run.font.color.rgb = RGBColor(255, 255, 255)
+
+    return doc
+
+
 def create_docx_file(input_file_name, output_file_name, clauses: list[dict], preamble_rows: list[dict]):
     from docx import Document
     doc = Document(input_file_name)
+    doc = add_title_page(doc, "BPVOY5", "Voyage Charter Party", "February 2016", "This is the additional information")
     doc = define_styles(doc)
     doc = set_header_and_footer(doc, "Header of my document", "Footer of my document")
+    
     doc = add_heading(doc, "Clause Index")
     doc = add_table_of_contents(doc)  # Add TOC after heading
-    doc = add_heading(doc, "Preamble")
-    doc = add_part_i(doc, preamble_rows)
-    doc = add_heading(doc, "Part 2")
-    doc = add_clauses(doc, clauses)
+    # doc = add_heading(doc, "Preamble")
+    # doc = add_part_i(doc, preamble_rows)
+    # doc = add_heading(doc, "Part 2")
+    # doc = add_clauses(doc, clauses)
     doc = set_updatefields_true(doc)
-    doc.save(output_file_name)
+
+
+    doc.save("chat_id_" + output_file_name)
 
 
 if __name__ == "__main__":
@@ -521,4 +570,4 @@ if __name__ == "__main__":
             "answer_type": ""
         },
     ]*5
-    create_docx_file("header_and_footer_empty.docx", "part_ii.docx", clauses, preamble_rows)
+    create_docx_file("template1_edited.docx", "final_doc.docx", clauses, preamble_rows)
