@@ -69,15 +69,16 @@ def set_header_and_footer(doc, header_text, footer_text):
     return doc
 
 def add_clauses(doc, clauses_list: dict):
-    from clause_model import ListOfClauses
+    from clause_model import Clause
     from docx.shared import Pt
     from docx.enum.style import WD_STYLE_TYPE
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
+    import re
     # Use the same document as template if no template provided
     template_doc = doc
 
-    clauses_list = ListOfClauses.model_validate(clauses_list).model_dump()
+    clauses_list = [Clause.model_validate(clause).model_dump() for clause in clauses_list]
 
     # Find template paragraphs for each level
     heading_para = None
@@ -118,8 +119,16 @@ def add_clauses(doc, clauses_list: dict):
         if hasattr(source_run.font, 'color') and source_run.font.color:
             target_run.font.color.rgb = source_run.font.color.rgb
 
+    def make_xml_compatible(s):
+        # Find all non-XML-compatible control characters
+        removed = [f"{ord(c):02x}" for c in s if ord(c) < 32 and c not in (9, 10, 13)]
+        # if removed:
+        #     print(f"Removed control characters (hex): {removed}")
+        # Remove all control characters except tab, newline, carriage return
+        return re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', s)
+
     # Add each clause with proper formatting
-    for clause in clauses_list['clauses']:
+    for clause in clauses_list:
         # Add clause title (level 1)
         p1 = doc.add_paragraph()
         p1.style = heading_para.style
@@ -134,9 +143,14 @@ def add_clauses(doc, clauses_list: dict):
             p2 = doc.add_paragraph()
             p2.style = clause_para.style
             p2._p.get_or_add_pPr().append(create_num_pr(1))
-            run2 = p2.add_run(content['clause_content'])
-            copy_font_properties(clause_para.runs[0], run2)
+            try:
+                cleaned_content = make_xml_compatible(content['clause_content'])
+                run2 = p2.add_run(cleaned_content)
+            except Exception as e:
+                print(content['clause_content'])
+                raise ValueError(f"Error adding clause content: {e}")
 
+            copy_font_properties(clause_para.runs[0], run2)
             add_element_at_marker(doc, p2, "Marker_paragraph_for_part_2")
 
             # Add subclauses (level 3)
@@ -184,10 +198,10 @@ def add_part_i(doc, list_of_rows: dict, marker_text):
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
 
-    from row_model import ListOfRows
-    list_of_rows = ListOfRows.model_validate(list_of_rows).model_dump()
+    from row_model import Row
+    list_of_rows = [Row.model_validate(row).model_dump() for row in list_of_rows]
     
-    for i, row_data in enumerate(list_of_rows['rows']):
+    for i, row_data in enumerate(list_of_rows):
         # Determine which columns to include based on non-empty data
         query = row_data.get('query', '').strip()
         answer = row_data.get('answer', '').strip()
@@ -322,9 +336,42 @@ def create_docx_file(input_file_name, output_file_name, clauses: dict, preamble_
 
     doc.save("chat_id_" + output_file_name) # TODO: replace with actual chat_id implementation
 
+def get_real_filename(filename):
+    return "2760eadc_806e_42c6_b9a3_ac92a56f1aeb_" + filename
 
-if __name__ == "__main__":
-    clauses = {"clauses": [
+def read_file(filename):
+    import os
+    import json
+    format = filename.split(".")[-1]
+    real_filename = get_real_filename(filename)
+    if not os.path.exists(real_filename):
+        raise FileNotFoundError(f"File {real_filename} not found")
+    if "json" in format:
+        with open(real_filename, "r", encoding="utf-8") as file:
+            return json.load(file)
+        file.close()
+    else:
+        with open(real_filename, "r", encoding="utf-8") as file:
+            return file.read()
+        file.close()
+
+def create_docx_file():
+    from docx import Document
+    doc = Document("perfect_template.docx")
+    doc_data = read_file("doc_data.json")
+    doc = add_title_page(doc, doc_data["doc_title"], doc_data["doc_title"], doc_data["date"], "")
+    doc = set_header_and_footer(doc, doc_data["header"], doc_data["footer"])
+    part_i_rows = read_file("part_i_rows.json")
+    preamble_rows = read_file("preamble_rows.json")
+    clauses = read_file("Part_ii_clauses.json")
+    doc = add_part_i(doc, preamble_rows, "Marker_paragraph_for_preamble")
+    doc = add_part_i(doc, part_i_rows, "Marker_paragraph_for_part_1")
+    doc = add_clauses(doc, clauses)
+    doc = set_updatefields_true(doc)
+    doc.save(get_real_filename(f"output.docx"))
+
+def dummy_data_run():
+    clauses = [
         {
             "clause_number": "1",
             "clause_title": "Lorem Ipsum Dolor",
@@ -386,9 +433,9 @@ if __name__ == "__main__":
                 }
             ]
         }
-    ]*7}
+    ]*7
 
-    preamble_rows = {"rows": [
+    preamble_rows = [
         {
             "query": "Date:",
             "answer": "2025-06-25",
@@ -429,5 +476,8 @@ if __name__ == "__main__":
             "answer": "That the service as described below shall be performed subject to the terms and conditions of this Charter, which consists of Part 1 and Part 2 and the completed questionnaire on the latest version of Intertanko Standard Tanker Voyage Chartering Questionnaire 1988 (“the Q88”) attached to this Charter. ",
             "answer_type": ""
         },
-    ]*1}
+    ]*1
     create_docx_file("perfect_template.docx", "final_doc.docx", clauses, preamble_rows)
+
+if __name__ == "__main__":
+    create_docx_file()
