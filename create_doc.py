@@ -337,9 +337,17 @@ def create_docx_file(input_file_name, output_file_name, clauses: dict, preamble_
     doc.save("chat_id_" + output_file_name) # TODO: replace with actual chat_id implementation
 
 def get_real_filename(filename):
+    """
+    USED ONLY IN LOCAL TESTING
+    TODO: remove this function in production
+    """
     return "2760eadc_806e_42c6_b9a3_ac92a56f1aeb_" + filename
 
 def read_file(filename):
+    """
+    USED ONLY IN LOCAL TESTING
+    TODO: remove this function in production
+    """
     import os
     import json
     format = filename.split(".")[-1]
@@ -356,6 +364,13 @@ def read_file(filename):
         file.close()
 
 def create_docx_file():
+    """
+    TODO: implement the storage of the **template** docx file in the database
+    TODO: implement the storage of the output docx file in the database
+    TODO: implement sorting of all topics
+    TODO: implement strikethrough, blue/red/black text, etc.
+    TODO: implement correct numbering of clause paragraphs
+    """
     from docx import Document
     doc = Document("perfect_template.docx")
     doc_data = read_file("doc_data.json")
