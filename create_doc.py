@@ -1,3 +1,33 @@
+from pydantic import BaseModel, Field
+
+class ClauseContent(BaseModel):
+    clause_content: str = Field(description="The contents of the clause")
+    subclauses: list[str] = Field(description="The subclauses of the clause")
+
+class Clause(BaseModel):
+    clause_number: str = Field(description="The number of the clause")
+    clause_title: str = Field(description="The title of the clause")
+    clause_content: list[ClauseContent] = Field(description="The contents of the clause")
+
+class ListOfClauses(BaseModel):
+    clauses: list[Clause] = Field(description="The list of clauses")
+
+class Row(BaseModel):
+    query: str = Field(description="The query of the row")
+    answer: str = Field(description="The answer of the row")
+    answer_type: str = Field(description="The type of the answer")
+
+class ListOfRows(BaseModel):
+    rows: list[Row] = Field(description="The list of rows")
+
+def check_imports():
+    try:
+        import docx
+    except ImportError:
+        import subprocess
+        import sys
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "python-docx"])
+
 def insert_element_before_paragraph(paragraph, element):
     """Insert a table after a specific paragraph."""
     # Get the paragraph element
@@ -38,8 +68,6 @@ def add_element_at_marker(doc, element, marker_text):
     else:
         raise ValueError("Marker paragraph not found")
         
-from clause_model import Clause
-
 def config():
     return {
         "MARKER_TEXT": "Start_new_section"
@@ -79,6 +107,8 @@ def add_clauses(doc, clauses_list: dict):
     template_doc = doc
 
     clauses_list = [Clause.model_validate(clause).model_dump() for clause in clauses_list]
+
+    clauses_list = sorted(clauses_list, key=lambda x: x['clause_number'])
 
     # Find template paragraphs for each level
     heading_para = None
@@ -198,7 +228,6 @@ def add_part_i(doc, list_of_rows: dict, marker_text):
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
 
-    from row_model import Row
     list_of_rows = [Row.model_validate(row).model_dump() for row in list_of_rows]
     
     for i, row_data in enumerate(list_of_rows):
@@ -321,6 +350,25 @@ def add_title_page(doc, title, subtitle, date, additional_information):
 
     return doc
 
+def download_file_from_google_drive(file_id: str, destination: str):
+    import requests
+    """
+    Downloads a file from Google Drive given its file ID and saves it to the specified destination.
+    The file must be accessible to everyone with the link.
+    Args:
+        file_id (str): The Google Drive file ID.
+        destination (str): The local path to save the downloaded file.
+    """
+    URL = "https://drive.usercontent.google.com/u/0/uc"
+    params = {"id": file_id, "export": "download"}
+    response = requests.get(URL, params=params, stream=True)
+    response.raise_for_status()
+    with open(destination, "wb") as f:
+        print(f"Downloading file to {destination}")
+        for chunk in response.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+        f.close()
 
 def create_docx_file(input_file_name, output_file_name, clauses: dict, preamble_rows: dict):
     from docx import Document
@@ -371,8 +419,11 @@ def create_docx_file():
     TODO: implement strikethrough, blue/red/black text, etc.
     TODO: implement correct numbering of clause paragraphs
     """
+    check_imports()
     from docx import Document
-    doc = Document("perfect_template.docx")
+    real_template_file_name = get_real_filename("perfect_template.docx")
+    download_file_from_google_drive("1Np_RB7uvQxViHzGwzl0IK_XKz15UA-f8", real_template_file_name)
+    doc = Document(real_template_file_name)
     doc_data = read_file("doc_data.json")
     doc = add_title_page(doc, doc_data["doc_title"], doc_data["doc_title"], doc_data["date"], "")
     doc = set_header_and_footer(doc, doc_data["header"], doc_data["footer"])
@@ -384,6 +435,15 @@ def create_docx_file():
     doc = add_clauses(doc, clauses)
     doc = set_updatefields_true(doc)
     doc.save(get_real_filename(f"output.docx"))
+
+    upload_file_asset(
+        file_name=get_real_filename(f"output.docx"),
+        file_bytes=open(get_real_filename(f"output.docx"), "rb").read(),
+        content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+    delete_file("output.docx")
+    delete_file("perfect_template.docx")
+    
 
 def dummy_data_run():
     clauses = [
