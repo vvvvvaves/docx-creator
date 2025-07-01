@@ -1,25 +1,3 @@
-from pydantic import BaseModel, Field
-
-class ClauseContent(BaseModel):
-    clause_content: str = Field(description="The contents of the clause")
-    subclauses: list[str] = Field(description="The subclauses of the clause")
-
-class Clause(BaseModel):
-    clause_number: str = Field(description="The number of the clause")
-    clause_title: str = Field(description="The title of the clause")
-    clause_content: list[ClauseContent] = Field(description="The contents of the clause")
-
-class ListOfClauses(BaseModel):
-    clauses: list[Clause] = Field(description="The list of clauses")
-
-class Row(BaseModel):
-    query: str = Field(description="The query of the row")
-    answer: str = Field(description="The answer of the row")
-    answer_type: str = Field(description="The type of the answer")
-
-class ListOfRows(BaseModel):
-    rows: list[Row] = Field(description="The list of rows")
-
 def check_imports():
     try:
         import docx
@@ -97,7 +75,6 @@ def set_header_and_footer(doc, header_text, footer_text):
     return doc
 
 def add_clauses(doc, clauses_list: dict):
-    from clause_model import Clause
     from docx.shared import Pt
     from docx.enum.style import WD_STYLE_TYPE
     from docx.oxml import OxmlElement
@@ -106,9 +83,8 @@ def add_clauses(doc, clauses_list: dict):
     # Use the same document as template if no template provided
     template_doc = doc
 
-    clauses_list = [Clause.model_validate(clause).model_dump() for clause in clauses_list]
 
-    clauses_list = sorted(clauses_list, key=lambda x: x['clause_number'])
+    clauses_list = sorted(clauses_list, key=lambda x: x['number'])
 
     # Find template paragraphs for each level
     heading_para = None
@@ -163,28 +139,28 @@ def add_clauses(doc, clauses_list: dict):
         p1 = doc.add_paragraph()
         p1.style = heading_para.style
         p1._p.get_or_add_pPr().append(create_num_pr(0))
-        run1 = p1.add_run(f"{clause['clause_title']}")
+        run1 = p1.add_run(f"{clause['name']}")
         copy_font_properties(heading_para.runs[0], run1)
 
         add_element_at_marker(doc, p1, "Marker_paragraph_for_part_2")
 
         # Add each clause content (level 2)
-        for content in clause['clause_content']:
+        for content in clause['contents']:
             p2 = doc.add_paragraph()
             p2.style = clause_para.style
             p2._p.get_or_add_pPr().append(create_num_pr(1))
             try:
-                cleaned_content = make_xml_compatible(content['clause_content'])
+                cleaned_content = make_xml_compatible(content['content'])
                 run2 = p2.add_run(cleaned_content)
             except Exception as e:
-                print(content['clause_content'])
+                print(content['content'])
                 raise ValueError(f"Error adding clause content: {e}")
 
             copy_font_properties(clause_para.runs[0], run2)
             add_element_at_marker(doc, p2, "Marker_paragraph_for_part_2")
 
-            # Add subclauses (level 3)
-            for subclause in content['subclauses']:
+            # Add subtopics (level 3)
+            for subclause in content['subtopics']:
                 p3 = doc.add_paragraph()
                 p3.style = subclause_para.style
                 p3._p.get_or_add_pPr().append(create_num_pr(2))
@@ -227,8 +203,6 @@ def add_part_i(doc, list_of_rows: dict, marker_text):
     from docx.shared import Pt
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
-
-    list_of_rows = [Row.model_validate(row).model_dump() for row in list_of_rows]
     
     for i, row_data in enumerate(list_of_rows):
         # Determine which columns to include based on non-empty data
@@ -411,7 +385,7 @@ def read_file(filename):
             return file.read()
         file.close()
 
-def create_docx_file():
+def create_docx_file(flat_history: dict):
     """
     TODO: implement the storage of the **template** docx file in the database
     TODO: implement the storage of the output docx file in the database
@@ -419,17 +393,20 @@ def create_docx_file():
     TODO: implement strikethrough, blue/red/black text, etc.
     TODO: implement correct numbering of clause paragraphs
     """
+    from parse_flat_history import parse_flat_history
+    parsed_flat_history = parse_flat_history(flat_history)
+
     check_imports()
     from docx import Document
     real_template_file_name = get_real_filename("perfect_template.docx")
     download_file_from_google_drive("1Np_RB7uvQxViHzGwzl0IK_XKz15UA-f8", real_template_file_name)
     doc = Document(real_template_file_name)
-    doc_data = read_file("doc_data.json")
-    doc = add_title_page(doc, doc_data["doc_title"], doc_data["doc_title"], doc_data["date"], "")
+    doc_data = parsed_flat_history['title_page']
+    doc = add_title_page(doc, doc_data["doc_title"], doc_data["doc_subtitle"], doc_data["date"], doc_data["additional_info"])
     doc = set_header_and_footer(doc, doc_data["header"], doc_data["footer"])
-    part_i_rows = read_file("part_i_rows.json")
-    preamble_rows = read_file("preamble_rows.json")
-    clauses = read_file("Part_ii_clauses.json")
+    part_i_rows = parsed_flat_history['part_i']
+    preamble_rows = parsed_flat_history['preamble']
+    clauses = parsed_flat_history['part_ii']
     doc = add_part_i(doc, preamble_rows, "Marker_paragraph_for_preamble")
     doc = add_part_i(doc, part_i_rows, "Marker_paragraph_for_part_1")
     doc = add_clauses(doc, clauses)
@@ -443,116 +420,11 @@ def create_docx_file():
 
     delete_file("output.docx")
     delete_file("perfect_template.docx")
-    
-
-def dummy_data_run():
-    clauses = [
-        {
-            "clause_number": "1",
-            "clause_title": "Lorem Ipsum Dolor",
-            "clause_content": [
-                {
-                    "clause_content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-                    "subclauses": ["Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.", "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."]
-                }
-            ]
-        },
-        {
-            "clause_number": "2",
-            "clause_title": "Lorem ipsum Dolor",
-            "clause_content": [
-                {
-                    "clause_content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-                    "subclauses": ["Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.", "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."]
-                }
-            ]
-        }, 
-        {
-            "clause_number": "3",
-            "clause_title": "Lorem ipsum Dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua",
-            "clause_content": [
-                {
-                    "clause_content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-                    "subclauses": ["Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.", "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."]
-                }
-            ]
-        },
-        
-        {
-            "clause_number": "4",
-            "clause_title": "Lorem ipsum Dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua",
-            "clause_content": [
-                {
-                    "clause_content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-                    "subclauses": ["Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.", "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."]
-                }
-            ]
-        },
-        {
-            "clause_number": "5",
-            "clause_title": "Lorem ipsum Dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua",
-            "clause_content": [
-                {
-                    "clause_content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-                    "subclauses": ["Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.", "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."]
-                }
-            ]
-        },
-        {
-            "clause_number": "6",
-            "clause_title": "Lorem ipsum Dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua",
-            "clause_content": [
-                {
-                    "clause_content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
-                    "subclauses": ["Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.", "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."]
-                }
-            ]
-        }
-    ]*7
-
-    preamble_rows = [
-        {
-            "query": "Date:",
-            "answer": "2025-06-25",
-            "answer_type": ""
-        },
-        {
-            "query": "It is this day agreed between:",
-            "answer": "John Doe and Jane Doe",
-            "answer_type": ""
-        },
-        {
-            "query": "of (registered address):",
-            "answer": "123 Main St, Anytown, USA",
-            "answer_type": "(“Owners”)"
-        },
-        {
-            "query": "being the: ",
-            "answer": "Owners",
-            "answer_type": "(“Owner/Disponent Owner”)"
-        },
-        {
-            "query": "of the Vessel called:",
-            "answer": "John Doe and Jane Doe",
-            "answer_type": "(“Vessel”)"
-        },
-        {
-            "query": "and",
-            "answer": "John Doe and Jane Doe",
-            "answer_type": "(“Vessel”)"
-        },
-        {
-            "query": "of",
-            "answer": "John Doe and Jane Doe",
-            "answer_type": "(“Charterers”)"
-        },
-        {
-            "query": "",
-            "answer": "That the service as described below shall be performed subject to the terms and conditions of this Charter, which consists of Part 1 and Part 2 and the completed questionnaire on the latest version of Intertanko Standard Tanker Voyage Chartering Questionnaire 1988 (“the Q88”) attached to this Charter. ",
-            "answer_type": ""
-        },
-    ]*1
-    create_docx_file("perfect_template.docx", "final_doc.docx", clauses, preamble_rows)
 
 if __name__ == "__main__":
-    create_docx_file()
+    import json
+    full_flat_history = None
+    with open('full_flat_history.json', 'r') as f:
+        full_flat_history = json.load(f)
+
+    create_docx_file(full_flat_history)
