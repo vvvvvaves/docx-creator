@@ -10,6 +10,16 @@ def get_title_page_model():
 
 def get_preamble_model():
     return {
+        "place": {
+            "query": "Place:",
+            "answer": "",
+            "answer_type": ""
+        },
+        "date": {
+            "query": "Date:",
+            "answer": "",
+            "answer_type": ""
+        },
     "owner": {
         "query": "IT IS THIS DAY AGREED between",
         "answer": "",
@@ -262,7 +272,7 @@ def parse_preamble(flat_history):
 def parse_part_i(flat_history):
     import json
 
-    part_i_data = find_by_id(flat_history, 'Part I')
+    part_i_data = find_by_id(flat_history, 'Part_1')
     part_i_data = [json.loads(data_point['content']) for data_point in part_i_data]
 
     part_i_model = get_part_i_model()
@@ -293,8 +303,8 @@ def parse_part_i(flat_history):
 
 def parse_part_ii(flat_history):
     import json
-    part_ii_data = find_by_id(flat_history, 'Summarizer')
-    part_ii_data += find_by_id(flat_history, 'Rewrite documents')
+    part_ii_data = find_by_id(flat_history, 'Part_2')
+    # part_ii_data += find_by_id(flat_history, 'Rewrite documents')
     part_ii_data = [json.loads(data_point['content'])['topics_data'] for data_point in part_ii_data]
     merged_part_ii_data = []
     for data_point in part_ii_data:

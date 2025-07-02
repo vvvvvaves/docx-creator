@@ -432,7 +432,7 @@ def create_docx_file(flat_history: dict):
     TODO: implement strikethrough, blue/red/black text, etc.
     TODO: implement correct numbering of clause paragraphs
     """
-    from parse_flat_history import parse_flat_history
+    # from parse_flat_history import parse_flat_history
     parsed_flat_history = parse_flat_history(flat_history)
 
     check_imports()
