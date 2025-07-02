@@ -52,12 +52,15 @@ def config():
     }
 
 def replace_paragraph_text(paragraph, old_text, new_text):
+    from docx.shared import Pt
     inline = paragraph.runs
     # Loop added to work with runs (strings with same style)
     for i in range(len(inline)):
         if old_text in inline[i].text:
             text = inline[i].text.replace(old_text, new_text)
             inline[i].text = text
+            if old_text == "[Title]" and len(new_text) > 8:
+                inline[i].font.size = Pt(48)
 
 def set_header_and_footer(doc, header_text, footer_text):
     from docx.shared import Pt
@@ -79,6 +82,7 @@ def add_clauses(doc, clauses_list: dict):
     from docx.enum.style import WD_STYLE_TYPE
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
+    from docx.shared import RGBColor
     import re
     # Use the same document as template if no template provided
     template_doc = doc
@@ -146,26 +150,61 @@ def add_clauses(doc, clauses_list: dict):
 
         # Add each clause content (level 2)
         for content in clause['contents']:
+            cleaned_content = make_xml_compatible(content['content'])
+            _split = cleaned_content.split('~~')
+            _split = [chunk for chunk in _split if chunk.strip()]
+            __split = [chunk.split('~') for chunk in _split]
+            all_chunks = []
+            for chunk in __split:
+                for subchunk in chunk:
+                    if subchunk.strip():
+                        all_chunks.append(subchunk)
+                
             p2 = doc.add_paragraph()
             p2.style = clause_para.style
             p2._p.get_or_add_pPr().append(create_num_pr(1))
             try:
-                cleaned_content = make_xml_compatible(content['content'])
-                run2 = p2.add_run(cleaned_content)
+                for i, chunk in enumerate(all_chunks):
+                    run2 = p2.add_run(chunk)
+                    copy_font_properties(clause_para.runs[0], run2)
+                    if i == 1:
+                        run2.font.color.rgb = RGBColor(255, 0, 0)
+                        run2.font.strike = True
+                    elif i > 1:
+                        run2.font.color.rgb = RGBColor(0, 0, 255)
             except Exception as e:
                 print(content['content'])
                 raise ValueError(f"Error adding clause content: {e}")
 
-            copy_font_properties(clause_para.runs[0], run2)
             add_element_at_marker(doc, p2, "Marker_paragraph_for_part_2")
 
             # Add subtopics (level 3)
-            for subclause in content['subtopics']:
+            for subtopic in content['subtopics']:
+                cleaned_subtopic = make_xml_compatible(subtopic)
+                _split = cleaned_subtopic.split('~~')
+                _split = [chunk for chunk in _split if chunk.strip()]
+                __split = [chunk.split('~') for chunk in _split]
+                all_chunks = []
+                for chunk in __split:
+                    for subchunk in chunk:
+                        if subchunk.strip():
+                            all_chunks.append(subchunk)
+
                 p3 = doc.add_paragraph()
-                p3.style = subclause_para.style
+                p3.style = subtopic_para.style
                 p3._p.get_or_add_pPr().append(create_num_pr(2))
-                run3 = p3.add_run(subclause)
-                copy_font_properties(subclause_para.runs[0], run3)
+                try:
+                    for i, chunk in enumerate(all_chunks):
+                        run3 = p3.add_run(chunk)
+                        copy_font_properties(subtopic_para.runs[0], run3)
+                        if i == 1:
+                            run3.font.color.rgb = RGBColor(255, 0, 0)
+                            run3.font.strike = True
+                        elif i > 1:
+                            run3.font.color.rgb = RGBColor(0, 0, 255)
+                except Exception as e:
+                    print(subtopic)
+                    raise ValueError(f"Error adding subtopic content: {e}")
 
                 add_element_at_marker(doc, p3, "Marker_paragraph_for_part_2")
 

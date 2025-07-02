@@ -294,10 +294,14 @@ def parse_part_i(flat_history):
 def parse_part_ii(flat_history):
     import json
     part_ii_data = find_by_id(flat_history, 'Summarizer')
+    part_ii_data += find_by_id(flat_history, 'Rewrite documents')
     part_ii_data = [json.loads(data_point['content'])['topics_data'] for data_point in part_ii_data]
     merged_part_ii_data = []
     for data_point in part_ii_data:
         merged_part_ii_data += data_point
+
+    for i in range(len(merged_part_ii_data)):
+        merged_part_ii_data[i]['number'] = i + 1
 
     return merged_part_ii_data
 
@@ -331,5 +335,13 @@ if __name__ == "__main__":
     import json
     with open('full_flat_history.json', 'r') as f:
         flat_history = json.load(f)
-    parsed_flat_history = parse_part_ii(flat_history)
-    print(json.dumps(parsed_flat_history, indent=4))
+    parsed_flat_history = parse_flat_history(flat_history)
+    part_ii = parsed_flat_history['part_ii']
+   
+    part_ii = sorted(part_ii, key=lambda x: x['number'])
+    for clause in part_ii:
+        print(clause['number'], clause['name'])
+    
+
+    
+    # print(json.dumps(parsed_flat_history, indent=4))
